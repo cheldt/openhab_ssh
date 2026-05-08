@@ -115,10 +115,10 @@ jobs:
           if git diff --cached --quiet; then
             echo "Digest file unchanged, nothing to commit."
           else
-            git commit -m "chore: update base image digest [skip ci]
-
-Base image: openhab/openhab:5.1.4
-New digest: ${{ steps.remote_digest.outputs.digest }}
-Trigger:    ${{ github.event_name }}"
+            git commit \
+              -m "chore: update base image digest [skip ci]" \
+              -m "Base image: openhab/openhab:5.1.4" \
+              -m "New digest: ${{ steps.remote_digest.outputs.digest }}" \
+              -m "Trigger:    ${{ github.event_name }}"
             git push origin main
           fi
