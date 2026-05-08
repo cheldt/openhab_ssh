@@ -34,7 +34,7 @@ jobs:
       - name: Get current base image digest
         id: remote_digest
         run: |
-          DIGEST=$(crane digest openhab/openhab:5.1.4)
+          DIGEST=$(crane digest openhab/openhab:latest)
           echo "digest=${DIGEST}" >> "$GITHUB_OUTPUT"
           echo "Remote digest: ${DIGEST}"
 
@@ -117,7 +117,7 @@ jobs:
           else
             git commit \
               -m "chore: update base image digest [skip ci]" \
-              -m "Base image: openhab/openhab:5.1.4" \
+              -m "Base image: openhab/openhab:latest" \
               -m "New digest: ${{ steps.remote_digest.outputs.digest }}" \
               -m "Trigger:    ${{ github.event_name }}"
             git push origin main
