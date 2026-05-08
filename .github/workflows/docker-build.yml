@@ -1,0 +1,124 @@
+name: Build and Push Docker Image
+
+on:
+  schedule:
+    - cron: '0 4 * * *'
+  push:
+    branches:
+      - main
+    paths:
+      - 'Dockerfile'
+  workflow_dispatch:
+
+concurrency:
+  group: docker-build
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install crane
+        uses: imjasonh/setup-crane@v0.4
+
+      - name: Get current base image digest
+        id: remote_digest
+        run: |
+          DIGEST=$(crane digest openhab/openhab:5.1.4)
+          echo "digest=${DIGEST}" >> "$GITHUB_OUTPUT"
+          echo "Remote digest: ${DIGEST}"
+
+      - name: Read stored digest
+        id: stored_digest
+        run: |
+          if [ -s base-image-digest.txt ]; then
+            STORED=$(cat base-image-digest.txt)
+          else
+            STORED=""
+          fi
+          echo "digest=${STORED}" >> "$GITHUB_OUTPUT"
+          echo "Stored digest: '${STORED}'"
+
+      - name: Determine if build is needed
+        id: should_build
+        run: |
+          REMOTE="${{ steps.remote_digest.outputs.digest }}"
+          STORED="${{ steps.stored_digest.outputs.digest }}"
+          EVENT="${{ github.event_name }}"
+          if [ "$EVENT" = "push" ] || [ "$EVENT" = "workflow_dispatch" ]; then
+            echo "build=true" >> "$GITHUB_OUTPUT"
+            echo "reason=Triggered by ${EVENT}" >> "$GITHUB_OUTPUT"
+          elif [ "$REMOTE" != "$STORED" ]; then
+            echo "build=true" >> "$GITHUB_OUTPUT"
+            echo "reason=Base image digest changed (${STORED} -> ${REMOTE})" >> "$GITHUB_OUTPUT"
+          else
+            echo "build=false" >> "$GITHUB_OUTPUT"
+            echo "reason=Digest unchanged, skipping build" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Log build decision
+        run: echo "Build needed ${{ steps.should_build.outputs.build }} -- ${{ steps.should_build.outputs.reason }}"
+
+      - name: Log in to GitHub Container Registry
+        if: steps.should_build.outputs.build == 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        if: steps.should_build.outputs.build == 'true'
+        uses: docker/setup-buildx-action@v3
+
+      - name: Extract Docker metadata
+        if: steps.should_build.outputs.build == 'true'
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/ohab_img
+          tags: |
+            type=raw,value=latest
+            type=sha,prefix=,format=short
+
+      - name: Build and push Docker image
+        if: steps.should_build.outputs.build == 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Update stored digest
+        if: steps.should_build.outputs.build == 'true'
+        run: echo "${{ steps.remote_digest.outputs.digest }}" > base-image-digest.txt
+
+      - name: Commit updated digest
+        if: steps.should_build.outputs.build == 'true'
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add base-image-digest.txt
+          if git diff --cached --quiet; then
+            echo "Digest file unchanged, nothing to commit."
+          else
+            git commit -m "chore: update base image digest [skip ci]
+
+Base image: openhab/openhab:5.1.4
+New digest: ${{ steps.remote_digest.outputs.digest }}
+Trigger:    ${{ github.event_name }}"
+            git push origin main
+          fi
