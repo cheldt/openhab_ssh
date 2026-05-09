@@ -1,0 +1,23 @@
+name: Cleanup Old Packages
+
+on:
+  schedule:
+    - cron: '0 2 * * 0'
+  workflow_dispatch:
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    
+    permissions:
+      packages: write
+      contents: read
+
+    steps:
+      - name: Clean up old package versions
+        uses: actions/delete-package-versions@v5
+        with:
+          package-name: 'ohab_img'
+          package-type: 'container'
+          
+          min-versions-to-keep: 2
