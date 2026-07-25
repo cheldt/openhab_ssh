@@ -17,6 +17,7 @@ concurrency:
 permissions:
   contents: write
   packages: write
+  security-events: write
 
 jobs:
   build-and-push:
@@ -103,6 +104,22 @@ jobs:
           cache-to: type=gha,mode=max
           provenance: false
           sbom: false
+
+      - name: Run Trivy vulnerability scanner
+        if: steps.should_build.outputs.build == 'true'
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: ghcr.io/${{ github.repository_owner }}/ohab_img:latest
+          format: sarif
+          output: trivy-results.sarif
+          severity: CRITICAL,HIGH
+
+      - name: Upload Trivy scan results to GitHub Security tab
+        if: steps.should_build.outputs.build == 'true'
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: trivy-results.sarif
+          category: trivy
 
       - name: Update stored digest
         if: steps.should_build.outputs.build == 'true'
