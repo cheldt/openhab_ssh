@@ -92,12 +92,13 @@ jobs:
             type=raw,value=latest
             type=sha,prefix=,format=short
 
-      - name: Build and push Docker image
+      - name: Build Docker image
         if: steps.should_build.outputs.build == 'true'
         uses: docker/build-push-action@v6
         with:
           context: .
-          push: true
+          push: false
+          load: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
@@ -113,13 +114,22 @@ jobs:
           format: sarif
           output: trivy-results.sarif
           severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: 1
 
       - name: Upload Trivy scan results to GitHub Security tab
-        if: steps.should_build.outputs.build == 'true'
+        if: always() && steps.should_build.outputs.build == 'true'
         uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: trivy-results.sarif
           category: trivy
+
+      - name: Push Docker image
+        if: steps.should_build.outputs.build == 'true'
+        run: |
+          echo "${{ steps.meta.outputs.tags }}" | while IFS= read -r tag; do
+            [ -n "$tag" ] && docker push "$tag"
+          done
 
       - name: Update stored digest
         if: steps.should_build.outputs.build == 'true'
