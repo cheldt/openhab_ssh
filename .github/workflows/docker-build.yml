@@ -127,14 +127,21 @@ jobs:
           category: trivy
 
       # Gating scan: reuses the DB cached by the step above. Fails the job -- and
-      # therefore blocks the push -- only on fixable CRITICAL/HIGH findings.
-      - name: Fail on CRITICAL/HIGH vulnerabilities
+      # therefore blocks the push -- only on fixable CRITICAL findings.
+      #
+      # HIGH is deliberately not a blocker: nearly everything in this image comes
+      # from the openHAB distribution, so a HIGH in e.g. a bundled netty/jetty jar
+      # can only be fixed by an upstream release. Blocking on those would skip the
+      # push and the digest commit, leaving :latest pinned to an older, more
+      # vulnerable image and failing every daily run until upstream moves. HIGH
+      # findings are still reported to the Security tab by the step above.
+      - name: Fail on CRITICAL vulnerabilities
         if: steps.should_build.outputs.build == 'true'
         uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: ghcr.io/${{ github.repository_owner }}/ohab_img:latest
           format: table
-          severity: CRITICAL,HIGH
+          severity: CRITICAL
           ignore-unfixed: true
           exit-code: 1
 
